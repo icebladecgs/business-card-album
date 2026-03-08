@@ -239,14 +239,28 @@ export default function HomePage() {
       </main>
 
       {/* FAB - 명함 추가 버튼 */}
-      <button
-        onClick={() => router.push('/add')}
-        className="fixed bottom-8 right-8 w-16 h-16 bg-blue-600 text-white rounded-full
-                   shadow-lg hover:bg-blue-700 hover:scale-110 transition-all duration-200
-                   flex items-center justify-center z-50"
-      >
-        <Plus size={32} />
-      </button>
+      <div className="fixed bottom-8 right-8 flex flex-col gap-3 z-50">
+        {/* 일괄 추가 버튼 */}
+        <button
+          onClick={() => router.push('/batch')}
+          title="여러 장 일괄 추가"
+          className="w-12 h-12 bg-gray-700 text-white rounded-full
+                     shadow-lg hover:bg-gray-900 hover:scale-110 transition-all duration-200
+                     flex items-center justify-center"
+        >
+          <span className="text-lg font-bold leading-none">⊞</span>
+        </button>
+        {/* 단건 추가 버튼 */}
+        <button
+          onClick={() => router.push('/add')}
+          title="명함 추가"
+          className="w-16 h-16 bg-blue-600 text-white rounded-full
+                     shadow-lg hover:bg-blue-700 hover:scale-110 transition-all duration-200
+                     flex items-center justify-center"
+        >
+          <Plus size={32} />
+        </button>
+      </div>
 
       {/* 상세 모달 */}
       {selectedCard && (
