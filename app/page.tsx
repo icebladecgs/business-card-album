@@ -8,6 +8,7 @@ import {
   getAllCards,
   getCardsByCompany,
   deleteCard,
+  updateCard,
   toggleFavorite,
   exportToJson,
   importFromJson,
@@ -104,9 +105,15 @@ export default function HomePage() {
     setSelectedCard(null);
   };
 
-  const handleEdit = (card: BusinessCard) => {
-    // 2차에서 구현: 수정 화면으로 이동
-    alert('수정 기능은 2차 버전에서 구현 예정입니다.');
+  const handleSave = async (updated: Partial<BusinessCard> & { id: string }) => {
+    try {
+      await updateCard(updated);
+      await loadData();
+      // 모달의 card prop 갱신
+      setSelectedCard(prev => prev ? { ...prev, ...updated } : null);
+    } catch {
+      alert('저장에 실패했습니다.');
+    }
   };
 
   const handleDelete = async (id: string) => {
@@ -267,7 +274,7 @@ export default function HomePage() {
         <BusinessCardDetailModal
           card={selectedCard}
           onClose={handleCloseModal}
-          onEdit={handleEdit}
+          onSave={handleSave}
           onDelete={handleDelete}
           onToggleFavorite={handleToggleFavorite}
         />
