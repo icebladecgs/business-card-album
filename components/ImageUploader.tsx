@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useRef } from 'react';
-import { Upload, X, Image as ImageIcon } from 'lucide-react';
-import { fileToBase64, compressImage } from '@/lib/utils';
+import { Upload, X, Camera, ImageIcon } from 'lucide-react';
+import { compressImage } from '@/lib/utils';
 
 interface ImageUploaderProps {
   onImageSelect: (imageData: string) => void;
@@ -16,6 +16,7 @@ export default function ImageUploader({
   const [isDragging, setIsDragging] = useState(false);
   const [preview, setPreview] = useState<string>(currentImage || '');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
 
   const handleFile = async (file: File) => {
     if (!file.type.startsWith('image/')) {
@@ -75,10 +76,20 @@ export default function ImageUploader({
 
   return (
     <div className="w-full">
+      {/* 갤러리 선택용 input */}
       <input
         ref={fileInputRef}
         type="file"
         accept="image/*"
+        onChange={handleFileInput}
+        className="hidden"
+      />
+      {/* 카메라 촬영용 input (capture=environment = 후면 카메라) */}
+      <input
+        ref={cameraInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
         onChange={handleFileInput}
         className="hidden"
       />
@@ -99,37 +110,40 @@ export default function ImageUploader({
           </button>
         </div>
       ) : (
-        <div
-          onClick={handleClick}
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onDrop={handleDrop}
-          className={`
-            w-full aspect-[16/10] rounded-lg border-2 border-dashed
-            flex flex-col items-center justify-center gap-4
-            cursor-pointer transition-all duration-200
-            ${
-              isDragging
+        <div className="w-full space-y-3">
+          {/* 카메라 촬영 버튼 (모바일 메인) */}
+          <button
+            type="button"
+            onClick={() => cameraInputRef.current?.click()}
+            className="w-full py-6 bg-blue-50 border-2 border-blue-200 rounded-xl
+                       flex flex-col items-center gap-2 cursor-pointer
+                       hover:bg-blue-100 hover:border-blue-400 transition-all duration-200"
+          >
+            <Camera size={40} className="text-blue-500" />
+            <span className="text-base font-semibold text-blue-700">카메라로 촬영</span>
+            <span className="text-xs text-blue-500">지금 바로 명함을 찍으세요</span>
+          </button>
+
+          {/* 갤러리/드래그드롭 */}
+          <div
+            onClick={() => fileInputRef.current?.click()}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            className={`
+              w-full py-5 rounded-xl border-2 border-dashed
+              flex flex-col items-center gap-2
+              cursor-pointer transition-all duration-200
+              ${isDragging
                 ? 'border-blue-500 bg-blue-50'
-                : 'border-gray-300 bg-gray-50 hover:bg-gray-100'
-            }
-          `}
-        >
-          <div className="p-4 rounded-full bg-white shadow-sm">
-            {isDragging ? (
-              <ImageIcon size={48} className="text-blue-500" />
-            ) : (
-              <Upload size={48} className="text-gray-400" />
-            )}
-          </div>
-          
-          <div className="text-center px-4">
-            <p className="text-lg font-medium text-gray-700 mb-1">
-              명함 이미지를 업로드하세요
-            </p>
-            <p className="text-sm text-gray-500">
-              클릭하거나 드래그 앤 드롭
-            </p>
+                : 'border-gray-300 bg-gray-50 hover:bg-gray-100'}
+            `}
+          >
+            {isDragging
+              ? <ImageIcon size={32} className="text-blue-500" />
+              : <Upload size={32} className="text-gray-400" />}
+            <span className="text-sm font-medium text-gray-600">갤러리에서 선택</span>
+            <span className="text-xs text-gray-400">또는 드래그&드롭</span>
           </div>
         </div>
       )}

@@ -4,7 +4,7 @@ import { useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ArrowLeft, Upload, Play, Save, CheckCircle,
-  Loader2, X, ChevronDown, ChevronUp, Images,
+  Loader2, X, ChevronDown, ChevronUp, Images, Camera,
 } from 'lucide-react';
 import type { OcrResult } from '@/types/business-card';
 import { processBusinessCardWithProgress } from '@/lib/ocr';
@@ -38,6 +38,7 @@ export default function BatchPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
 
   const addFiles = useCallback(async (files: FileList) => {
     const newCards: BatchCard[] = [];
@@ -224,41 +225,56 @@ export default function BatchPage() {
       <main className="max-w-2xl mx-auto px-4 py-6 space-y-4">
 
         {/* 업로드 드롭존 */}
-        <div
-          onClick={() => fileInputRef.current?.click()}
-          onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-          onDragLeave={() => setIsDragging(false)}
-          onDrop={handleDrop}
-          className={`
-            border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer
-            transition-all duration-200
-            ${isDragging
-              ? 'border-blue-500 bg-blue-50'
-              : 'border-gray-300 bg-white hover:border-blue-400 hover:bg-blue-50'}
-          `}
-        >
-          <div className="flex flex-col items-center gap-3">
-            <div className="p-4 rounded-full bg-blue-100">
-              <Images size={36} className="text-blue-600" />
-            </div>
-            <div>
-              <p className="text-base font-semibold text-gray-800">사진 여러 장 선택</p>
-              <p className="text-sm text-gray-500 mt-1">
-                탭하여 선택 · 카메라 촬영 · 드래그&드롭
-              </p>
-            </div>
-            <span className="text-xs text-blue-600 font-medium bg-blue-100 px-3 py-1 rounded-full">
-              한 번에 여러 장 가능
-            </span>
-          </div>
+        <div className="space-y-3">
+          {/* 카메라 촬영 버튼 */}
+          <button
+            type="button"
+            onClick={() => cameraInputRef.current?.click()}
+            className="w-full py-5 bg-blue-50 border-2 border-blue-200 rounded-2xl
+                       flex flex-col items-center gap-2 cursor-pointer
+                       hover:bg-blue-100 hover:border-blue-400 transition-all duration-200"
+          >
+            <Camera size={36} className="text-blue-500" />
+            <span className="text-base font-semibold text-blue-700">카메라로 촬영</span>
+            <span className="text-xs text-blue-500">명함을 연속으로 찍으면 목록에 쌓입니다</span>
+          </button>
           <input
-            ref={fileInputRef}
+            ref={cameraInputRef}
             type="file"
             accept="image/*"
-            multiple
+            capture="environment"
             onChange={handleFileInput}
             className="hidden"
           />
+
+          {/* 갤러리/드래그드롭 */}
+          <div
+            onClick={() => fileInputRef.current?.click()}
+            onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+            onDragLeave={() => setIsDragging(false)}
+            onDrop={handleDrop}
+            className={`
+              border-2 border-dashed rounded-2xl p-6 text-center cursor-pointer
+              transition-all duration-200
+              ${isDragging
+                ? 'border-blue-500 bg-blue-50'
+                : 'border-gray-300 bg-white hover:border-blue-400 hover:bg-blue-50'}
+            `}
+          >
+            <div className="flex flex-col items-center gap-2">
+              <Images size={32} className="text-gray-400" />
+              <p className="text-sm font-semibold text-gray-700">갤러리에서 여러 장 선택</p>
+              <p className="text-xs text-gray-400">드래그&드롭도 가능</p>
+            </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              onChange={handleFileInput}
+              className="hidden"
+            />
+          </div>
         </div>
 
         {/* 인식 시작 버튼 */}
