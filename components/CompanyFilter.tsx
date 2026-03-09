@@ -1,42 +1,81 @@
 'use client';
 
-import { Building2 } from 'lucide-react';
+import { LayoutGrid } from 'lucide-react';
 import type { CompanyGroup } from '@/types/business-card';
 
 interface CompanyFilterProps {
   companies: CompanyGroup[];
+  categories: string[];
   selectedCompany: string;
   onCompanyChange: (company: string) => void;
 }
 
 export default function CompanyFilter({
   companies,
+  categories,
   selectedCompany,
   onCompanyChange,
 }: CompanyFilterProps) {
   const totalCount = companies.reduce((sum, group) => sum + group.count, 0);
-  
+
   return (
     <div className="w-full bg-white rounded-lg shadow-sm border border-gray-200 p-4">
       <div className="flex items-center gap-2 mb-3">
-        <Building2 size={20} className="text-blue-600" />
-        <h3 className="font-semibold text-gray-800">회사별 보기</h3>
+        <LayoutGrid size={20} className="text-blue-600" />
+        <h3 className="font-semibold text-gray-800">보기 구분</h3>
       </div>
-      
-      <select
-        value={selectedCompany}
-        onChange={(e) => onCompanyChange(e.target.value)}
-        className="w-full px-4 py-3 text-base border border-gray-300 rounded-lg
-                   focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
-                   bg-white cursor-pointer"
-      >
-        <option value="">전체 ({totalCount})</option>
+
+      <div className="flex flex-wrap gap-2">
+        {/* 전체 버튼 */}
+        <button
+          type="button"
+          onClick={() => onCompanyChange('')}
+          className={`px-3 py-1.5 rounded-full text-sm font-medium border-2 transition-all duration-150
+            ${selectedCompany === ''
+              ? 'bg-blue-600 border-blue-600 text-white'
+              : 'bg-white border-gray-300 text-gray-600 hover:border-blue-400 hover:text-blue-600'
+            }`}
+        >
+          전체 ({totalCount})
+        </button>
+
+        {/* 관계 구분 버튼들 */}
+        {categories.map((cat) => {
+          const count = companies.reduce((sum, g) =>
+            sum + g.cards.filter((c) => c.category === cat).length, 0);
+          if (count === 0) return null;
+          return (
+            <button
+              key={cat}
+              type="button"
+              onClick={() => onCompanyChange(`category:${cat}`)}
+              className={`px-3 py-1.5 rounded-full text-sm font-medium border-2 transition-all duration-150
+                ${selectedCompany === `category:${cat}`
+                  ? 'bg-purple-600 border-purple-600 text-white'
+                  : 'bg-white border-purple-200 text-purple-600 hover:border-purple-400'
+                }`}
+            >
+              {cat} ({count})
+            </button>
+          );
+        })}
+
+        {/* 회사별 버튼들 */}
         {companies.map((group) => (
-          <option key={group.company} value={group.company}>
+          <button
+            key={group.company}
+            type="button"
+            onClick={() => onCompanyChange(`company:${group.company}`)}
+            className={`px-3 py-1.5 rounded-full text-sm font-medium border-2 transition-all duration-150
+              ${selectedCompany === `company:${group.company}`
+                ? 'bg-green-600 border-green-600 text-white'
+                : 'bg-white border-green-200 text-green-700 hover:border-green-400'
+              }`}
+          >
             {group.company} ({group.count})
-          </option>
+          </button>
         ))}
-      </select>
+      </div>
     </div>
   );
 }

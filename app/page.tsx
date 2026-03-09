@@ -12,6 +12,7 @@ import {
   toggleFavorite,
   exportToJson,
   importFromJson,
+  getCategoryList,
 } from '@/lib/storage';
 import { downloadFile } from '@/lib/utils';
 import BusinessCardGrid from '@/components/BusinessCardGrid';
@@ -24,6 +25,7 @@ export default function HomePage() {
   const router = useRouter();
   const [cards, setCards] = useState<BusinessCard[]>([]);
   const [companyGroups, setCompanyGroups] = useState<CompanyGroup[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
   const [selectedCompany, setSelectedCompany] = useState<string>('');
   const [selectedCard, setSelectedCard] = useState<BusinessCard | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
@@ -56,6 +58,7 @@ export default function HomePage() {
       ]);
       setCards(allCards);
       setCompanyGroups(groups);
+      setCategories(getCategoryList());
     } catch (error) {
       console.error('Failed to load data:', error);
     } finally {
@@ -69,13 +72,16 @@ export default function HomePage() {
 
   // 필터링된 카드 목록
   const filteredCards = useMemo(() => {
-    if (!selectedCompany) {
-      return cards;
+    if (!selectedCompany) return cards;
+    if (selectedCompany.startsWith('category:')) {
+      const cat = selectedCompany.slice('category:'.length);
+      return cards.filter((card) => card.category === cat);
     }
-    return cards.filter((card) => {
-      const company = card.company || '미분류';
-      return company === selectedCompany;
-    });
+    if (selectedCompany.startsWith('company:')) {
+      const company = selectedCompany.slice('company:'.length);
+      return cards.filter((card) => (card.company || '미분류') === company);
+    }
+    return cards;
   }, [cards, selectedCompany]);
 
   // 페이지네이션 정보
@@ -222,6 +228,7 @@ export default function HomePage() {
         <div className="mb-6">
           <CompanyFilter
             companies={companyGroups}
+            categories={categories}
             selectedCompany={selectedCompany}
             onCompanyChange={(company) => {
               setSelectedCompany(company);

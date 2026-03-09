@@ -6,6 +6,7 @@ import type {
   CompanyGroup,
   BusinessCardExport,
 } from '@/types/business-card';
+import { DEFAULT_CATEGORIES, CATEGORIES_STORAGE_KEY } from '@/types/business-card';
 import { generateId } from './utils';
 
 /**
@@ -283,6 +284,81 @@ export async function searchCards(query: string): Promise<BusinessCard[]> {
     });
   } catch (error) {
     console.error('Failed to search cards:', error);
+    return [];
+  }
+}
+
+/**
+ * 카테고리(관계 구분) 목록 불러오기
+ */
+export function getCategoryList(): string[] {
+  if (typeof window === 'undefined') return [...DEFAULT_CATEGORIES];
+  try {
+    const saved = localStorage.getItem(CATEGORIES_STORAGE_KEY);
+    if (!saved) {
+      localStorage.setItem(CATEGORIES_STORAGE_KEY, JSON.stringify(DEFAULT_CATEGORIES));
+      return [...DEFAULT_CATEGORIES];
+    }
+    return JSON.parse(saved) as string[];
+  } catch {
+    return [...DEFAULT_CATEGORIES];
+  }
+}
+
+/**
+ * 카테고리 목록 저장
+ */
+export function saveCategoryList(categories: string[]): void {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(CATEGORIES_STORAGE_KEY, JSON.stringify(categories));
+}
+
+/**
+ * 카테고리 추가
+ */
+export function addCategoryItem(name: string): string[] {
+  const list = getCategoryList();
+  const trimmed = name.trim();
+  if (trimmed && !list.includes(trimmed)) {
+    list.push(trimmed);
+    saveCategoryList(list);
+  }
+  return list;
+}
+
+/**
+ * 카테고리 삭제
+ */
+export function removeCategoryItem(name: string): string[] {
+  const list = getCategoryList().filter((c) => c !== name);
+  saveCategoryList(list);
+  return list;
+}
+
+/**
+ * 카테고리 + 회사명 기준 그룹핑
+ */
+export async function getCardsByGroup(): Promise<{ key: string; type: 'category' | 'company'; cards: BusinessCard[] }[]> {
+  try {
+    const cards = await getAllCards();
+    const groups: Record<string, { type: 'category' | 'company'; cards: BusinessCard[] }> = {};
+
+    cards.forEach((card) => {
+      const key = card.category || card.company || '미분류';
+      const type: 'category' | 'company' = card.category ? 'category' : 'company';
+      if (!groups[key]) groups[key] = { type, cards: [] };
+      groups[key].cards.push(card);
+    });
+
+    return Object.entries(groups)
+      .map(([key, value]) => ({ key, ...value }))
+      .sort((a, b) => {
+        if (a.key === '미분류') return 1;
+        if (b.key === '미분류') return -1;
+        return a.key.localeCompare(b.key, 'ko');
+      });
+  } catch (error) {
+    console.error('Failed to group cards:', error);
     return [];
   }
 }
