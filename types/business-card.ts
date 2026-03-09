@@ -9,7 +9,7 @@ export interface BusinessCard {
   imageFront?: string;
   rawOcrText?: string;
   favorite: boolean;
-  category?: string;
+  categories?: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -24,7 +24,7 @@ export interface CreateBusinessCardInput {
   imageFront?: string;
   rawOcrText?: string;
   favorite?: boolean;
-  category?: string;
+  categories?: string[];
 }
 
 export interface UpdateBusinessCardInput {
@@ -38,7 +38,7 @@ export interface UpdateBusinessCardInput {
   imageFront?: string;
   rawOcrText?: string;
   favorite?: boolean;
-  category?: string;
+  categories?: string[];
 }
 
 export interface CompanyGroup {

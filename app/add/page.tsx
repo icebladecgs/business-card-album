@@ -71,7 +71,7 @@ export default function AddCardPage() {
     phone: string;
     email: string;
     memo: string;
-    category: string;
+    categories: string[];
   }) => {
     setIsSaving(true);
 

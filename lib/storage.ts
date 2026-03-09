@@ -344,8 +344,9 @@ export async function getCardsByGroup(): Promise<{ key: string; type: 'category'
     const groups: Record<string, { type: 'category' | 'company'; cards: BusinessCard[] }> = {};
 
     cards.forEach((card) => {
-      const key = card.category || card.company || '미분류';
-      const type: 'category' | 'company' = card.category ? 'category' : 'company';
+      const firstCat = card.categories?.[0];
+      const key = firstCat || card.company || '미분류';
+      const type: 'category' | 'company' = firstCat ? 'category' : 'company';
       if (!groups[key]) groups[key] = { type, cards: [] };
       groups[key].cards.push(card);
     });

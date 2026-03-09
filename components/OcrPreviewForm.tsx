@@ -13,7 +13,7 @@ interface OcrPreviewFormProps {
     phone: string;
     email: string;
     memo: string;
-    category: string;
+    categories: string[];
   }) => void;
   isSubmitting?: boolean;
 }
@@ -30,15 +30,14 @@ export default function OcrPreviewForm({
     phone: ocrResult.phone,
     email: ocrResult.email,
     memo: '',
-    category: '',
   });
-
-  const [categories, setCategories] = useState<string[]>([]);
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [categoryList, setCategoryList] = useState<string[]>([]);
   const [showAddInput, setShowAddInput] = useState(false);
   const [newCategory, setNewCategory] = useState('');
 
   useEffect(() => {
-    setCategories(getCategoryList());
+    setCategoryList(getCategoryList());
   }, []);
 
   const handleChange = (
@@ -48,29 +47,26 @@ export default function OcrPreviewForm({
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleCategoryToggle = (cat: string) => {
-    setFormData((prev) => ({
-      ...prev,
-      category: prev.category === cat ? '' : cat,
-    }));
+  const toggleCategory = (cat: string) => {
+    setSelectedCategories((prev) =>
+      prev.includes(cat) ? prev.filter((c) => c !== cat) : [...prev, cat]
+    );
   };
 
   const handleAddCategory = () => {
     const trimmed = newCategory.trim();
     if (!trimmed) return;
     const updated = addCategoryItem(trimmed);
-    setCategories(updated);
-    setFormData((prev) => ({ ...prev, category: trimmed }));
+    setCategoryList(updated);
+    setSelectedCategories((prev) => [...prev, trimmed]);
     setNewCategory('');
     setShowAddInput(false);
   };
 
   const handleRemoveCategory = (cat: string) => {
     const updated = removeCategoryItem(cat);
-    setCategories(updated);
-    if (formData.category === cat) {
-      setFormData((prev) => ({ ...prev, category: '' }));
-    }
+    setCategoryList(updated);
+    setSelectedCategories((prev) => prev.filter((c) => c !== cat));
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -79,7 +75,7 @@ export default function OcrPreviewForm({
       alert('이름을 입력해주세요.');
       return;
     }
-    onSubmit(formData);
+    onSubmit({ ...formData, categories: selectedCategories });
   };
 
   return (
@@ -93,16 +89,16 @@ export default function OcrPreviewForm({
       {/* 관계 구분 */}
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-2">
-          관계 구분
+          관계 구분 <span className="text-xs text-gray-400">(중복 선택 가능)</span>
         </label>
         <div className="flex flex-wrap gap-2">
-          {categories.map((cat) => (
+          {categoryList.map((cat) => (
             <div key={cat} className="relative group">
               <button
                 type="button"
-                onClick={() => handleCategoryToggle(cat)}
+                onClick={() => toggleCategory(cat)}
                 className={`px-3 py-1.5 rounded-full text-sm font-medium border-2 transition-all duration-150
-                  ${formData.category === cat
+                  ${selectedCategories.includes(cat)
                     ? 'bg-blue-600 border-blue-600 text-white'
                     : 'bg-white border-gray-300 text-gray-600 hover:border-blue-400 hover:text-blue-600'
                   }`}

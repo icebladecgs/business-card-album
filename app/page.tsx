@@ -75,7 +75,7 @@ export default function HomePage() {
     if (!selectedCompany) return cards;
     if (selectedCompany.startsWith('category:')) {
       const cat = selectedCompany.slice('category:'.length);
-      return cards.filter((card) => card.category === cat);
+      return cards.filter((card) => card.categories?.includes(cat));
     }
     if (selectedCompany.startsWith('company:')) {
       const company = selectedCompany.slice('company:'.length);

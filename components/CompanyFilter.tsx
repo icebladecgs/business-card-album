@@ -42,7 +42,7 @@ export default function CompanyFilter({
         {/* 관계 구분 버튼들 */}
         {categories.map((cat) => {
           const count = companies.reduce((sum, g) =>
-            sum + g.cards.filter((c) => c.category === cat).length, 0);
+            sum + g.cards.filter((c) => c.categories?.includes(cat)).length, 0);
           if (count === 0) return null;
           return (
             <button

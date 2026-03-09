@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
-import { X, Edit2, Trash2, Star, Building2, User, Phone, Mail, Briefcase, FileText, Check } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { X, Edit2, Trash2, Star, Building2, User, Phone, Mail, Briefcase, FileText, Check, Tag } from 'lucide-react';
 import type { BusinessCard } from '@/types/business-card';
 import { formatPhoneNumber, formatDate } from '@/lib/utils';
+import { getCategoryList, addCategoryItem, removeCategoryItem } from '@/lib/storage';
 
 interface BusinessCardDetailModalProps {
   card: BusinessCard;
@@ -32,6 +33,36 @@ export default function BusinessCardDetailModal({
     email: card.email,
     memo: card.memo,
   });
+  const [draftCategories, setDraftCategories] = useState<string[]>(card.categories || []);
+  const [categoryList, setCategoryList] = useState<string[]>([]);
+  const [showAddCatInput, setShowAddCatInput] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
+
+  useEffect(() => {
+    setCategoryList(getCategoryList());
+  }, []);
+
+  const toggleDraftCategory = (cat: string) => {
+    setDraftCategories((prev) =>
+      prev.includes(cat) ? prev.filter((c) => c !== cat) : [...prev, cat]
+    );
+  };
+
+  const handleAddCategoryItem = () => {
+    const trimmed = newCategoryName.trim();
+    if (!trimmed) return;
+    const updated = addCategoryItem(trimmed);
+    setCategoryList(updated);
+    setDraftCategories((prev) => [...prev, trimmed]);
+    setNewCategoryName('');
+    setShowAddCatInput(false);
+  };
+
+  const handleRemoveCategoryItem = (cat: string) => {
+    const updated = removeCategoryItem(cat);
+    setCategoryList(updated);
+    setDraftCategories((prev) => prev.filter((c) => c !== cat));
+  };
 
   const handleDelete = () => {
     if (showDeleteConfirm) {
@@ -43,7 +74,7 @@ export default function BusinessCardDetailModal({
   };
 
   const handleSave = () => {
-    onSave({ id: card.id, ...draft });
+    onSave({ id: card.id, ...draft, categories: draftCategories });
     setIsEditing(false);
   };
 
@@ -53,6 +84,13 @@ export default function BusinessCardDetailModal({
 
   const set = (field: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setDraft(prev => ({ ...prev, [field]: e.target.value }));
+
+  // 편집 취소 시 draft 초기화
+  const handleCancelEdit = () => {
+    setIsEditing(false);
+    setDraft({ company: card.company, name: card.name, title: card.title, phone: card.phone, email: card.email, memo: card.memo });
+    setDraftCategories(card.categories || []);
+  };
 
   return (
     <div
@@ -95,6 +133,64 @@ export default function BusinessCardDetailModal({
           {isEditing ? (
             /* ── 편집 모드 ── */
             <>
+              {/* 은계 구분 다중 선택 */}
+              <div>
+                <label className="flex items-center gap-1.5 text-xs text-gray-500 mb-2 font-medium">
+                  <Tag size={14} className="text-blue-500" />
+                  관계 구분
+                  <span className="text-gray-400 font-normal">(중복 선택 가능)</span>
+                </label>
+                <div className="flex flex-wrap gap-2 mb-1">
+                  {categoryList.map((cat) => (
+                    <div key={cat} className="relative group">
+                      <button
+                        type="button"
+                        onClick={() => toggleDraftCategory(cat)}
+                        className={`px-3 py-1.5 rounded-full text-sm font-medium border-2 transition-all duration-150
+                          ${draftCategories.includes(cat)
+                            ? 'bg-blue-600 border-blue-600 text-white'
+                            : 'bg-white border-gray-300 text-gray-600 hover:border-blue-400 hover:text-blue-600'
+                          }`}
+                      >
+                        {cat}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveCategoryItem(cat)}
+                        className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-red-500 text-white rounded-full text-xs
+                                   items-center justify-center hidden group-hover:flex leading-none"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                  {showAddCatInput ? (
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="text"
+                        value={newCategoryName}
+                        onChange={(e) => setNewCategoryName(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddCategoryItem())}
+                        placeholder="구분명"
+                        autoFocus
+                        className="w-20 px-2 py-1 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                      <button type="button" onClick={handleAddCategoryItem}
+                        className="px-2 py-1 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700">추가</button>
+                      <button type="button" onClick={() => { setShowAddCatInput(false); setNewCategoryName(''); }}
+                        className="px-2 py-1 text-xs bg-gray-200 text-gray-600 rounded-lg hover:bg-gray-300">취소</button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setShowAddCatInput(true)}
+                      className="px-3 py-1.5 rounded-full text-sm border-2 border-dashed border-gray-300 text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors"
+                    >
+                      + 추가
+                    </button>
+                  )}
+                </div>
+              </div>
               {[
                 { key: 'company', label: '회사명', icon: <Building2 size={16} className="text-blue-500" /> },
                 { key: 'name',    label: '이름',   icon: <User size={16} className="text-gray-500" /> },
@@ -129,6 +225,16 @@ export default function BusinessCardDetailModal({
           ) : (
             /* ── 보기 모드 ── */
             <>
+              {/* 관계 구분 태그 표시 */}
+              {card.categories && card.categories.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {card.categories.map((cat) => (
+                    <span key={cat} className="px-2.5 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-medium">
+                      {cat}
+                    </span>
+                  ))}
+                </div>
+              )}
               <div className="flex items-start gap-3">
                 <Building2 size={20} className="text-blue-600 mt-1 flex-shrink-0" />
                 <div>
@@ -197,7 +303,7 @@ export default function BusinessCardDetailModal({
           {isEditing ? (
             <div className="flex gap-3">
               <button
-                onClick={() => { setIsEditing(false); setDraft({ company: card.company, name: card.name, title: card.title, phone: card.phone, email: card.email, memo: card.memo }); }}
+                onClick={() => { setIsEditing(false); setDraft({ company: card.company, name: card.name, title: card.title, phone: card.phone, email: card.email, memo: card.memo }); setDraftCategories(card.categories || []); }}
                 className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 transition-colors"
               >
                 취소
