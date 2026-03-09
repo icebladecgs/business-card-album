@@ -10,6 +10,7 @@ import type { OcrResult } from '@/types/business-card';
 import { processBusinessCardWithProgress } from '@/lib/ocr';
 import { createCard } from '@/lib/storage';
 import { compressImage } from '@/lib/utils';
+import { detectAndCropCard } from '@/lib/cardCrop';
 
 type CardStatus = 'pending' | 'processing' | 'done' | 'error';
 
@@ -47,9 +48,10 @@ export default function BatchPage() {
       if (!file.type.startsWith('image/')) continue;
       try {
         const compressed = await compressImage(file, 1200, 0.8);
+        const { croppedImage } = await detectAndCropCard(compressed);
         newCards.push({
           id: `${Date.now()}-${i}`,
-          imageData: compressed,
+          imageData: croppedImage,
           status: 'pending',
           progress: 0,
           editedData: { company: '', name: '', title: '', phone: '', email: '', memo: '' },
