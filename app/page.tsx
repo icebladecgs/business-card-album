@@ -18,6 +18,7 @@ import BusinessCardGrid from '@/components/BusinessCardGrid';
 import BusinessCardDetailModal from '@/components/BusinessCardDetailModal';
 import CompanyFilter from '@/components/CompanyFilter';
 import PaginationControls from '@/components/PaginationControls';
+import InstallAppButton from '@/components/InstallAppButton';  // PWA 설치 버튼
 
 export default function HomePage() {
   const router = useRouter();
@@ -195,6 +196,7 @@ export default function HomePage() {
             <h1 className="text-2xl font-bold text-gray-900">📇 명함첩</h1>
             
             <div className="flex items-center gap-2">
+              <InstallAppButton />
               <button
                 onClick={handleExport}
                 className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
