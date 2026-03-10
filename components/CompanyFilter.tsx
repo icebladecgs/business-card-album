@@ -17,6 +17,10 @@ export default function CompanyFilter({
   onCompanyChange,
 }: CompanyFilterProps) {
   const totalCount = companies.reduce((sum, group) => sum + group.count, 0);
+  const totalFavorites = companies.reduce(
+    (sum, group) => sum + group.cards.filter((c) => c.favorite).length,
+    0
+  );
 
   return (
     <div className="w-full bg-white rounded-lg shadow-sm border border-gray-200 p-4">
@@ -38,6 +42,21 @@ export default function CompanyFilter({
         >
           전체 ({totalCount})
         </button>
+
+        {/* 즐겨찾기 버튼 */}
+        {totalFavorites > 0 && (
+          <button
+            type="button"
+            onClick={() => onCompanyChange('favorites')}
+            className={`px-3 py-1.5 rounded-full text-sm font-medium border-2 transition-all duration-150
+              ${selectedCompany === 'favorites'
+                ? 'bg-yellow-500 border-yellow-500 text-white'
+                : 'bg-white border-yellow-300 text-yellow-600 hover:border-yellow-400 hover:text-yellow-700'
+              }`}
+          >
+            ⭐ 즐겨찾기 ({totalFavorites})
+          </button>
+        )}
 
         {/* 관계 구분 버튼들 */}
         {categories.map((cat) => {

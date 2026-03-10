@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ArrowLeft, Upload, Play, Save, CheckCircle,
@@ -11,6 +11,7 @@ import { processBusinessCardWithProgress } from '@/lib/ocr';
 import { createCard } from '@/lib/storage';
 import { compressImage } from '@/lib/utils';
 import { detectAndCropCard } from '@/lib/cardCrop';
+import { getCategoryList } from '@/lib/storage';
 
 type CardStatus = 'pending' | 'processing' | 'done' | 'error';
 
@@ -27,6 +28,7 @@ interface BatchCard {
     phone: string;
     email: string;
     memo: string;
+    categories: string[];
   };
   saved: boolean;
 }
@@ -38,8 +40,13 @@ export default function BatchPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [categoryList, setCategoryList] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setCategoryList(getCategoryList());
+  }, []);
 
   const addFiles = useCallback(async (files: FileList) => {
     const newCards: BatchCard[] = [];
@@ -54,7 +61,7 @@ export default function BatchPage() {
           imageData: croppedImage,
           status: 'pending',
           progress: 0,
-          editedData: { company: '', name: '', title: '', phone: '', email: '', memo: '' },
+          editedData: { company: '', name: '', title: '', phone: '', email: '', memo: '', categories: [] },
           saved: false,
         });
       } catch (e) {
@@ -112,6 +119,7 @@ export default function BatchPage() {
               phone: result.phone,
               email: result.email,
               memo: '',
+              categories: [],
             },
           } : c
         ));
@@ -156,6 +164,12 @@ export default function BatchPage() {
   const updateField = (cardId: string, field: string, value: string) => {
     setCards(prev => prev.map(c =>
       c.id === cardId ? { ...c, editedData: { ...c.editedData, [field]: value } } : c
+    ));
+  };
+
+  const updateCategories = (cardId: string, categories: string[]) => {
+    setCards(prev => prev.map(c =>
+      c.id === cardId ? { ...c, editedData: { ...c.editedData, categories } } : c
     ));
   };
 
@@ -383,6 +397,35 @@ export default function BatchPage() {
                   <div className="border-t border-gray-100 px-4 pb-4 pt-3 bg-gray-50">
                     <p className="text-xs text-gray-500 mb-3 font-medium">내용 수정</p>
                     <div className="grid grid-cols-2 gap-3">
+                      {/* 관계 구분 */}
+                      {categoryList.length > 0 && (
+                        <div className="col-span-2">
+                          <label className="text-xs text-gray-500 mb-1.5 block">관계 구분</label>
+                          <div className="flex flex-wrap gap-1.5">
+                            {categoryList.map(cat => (
+                              <button
+                                key={cat}
+                                type="button"
+                                onClick={() => {
+                                  const current = card.editedData.categories;
+                                  updateCategories(card.id,
+                                    current.includes(cat)
+                                      ? current.filter(c => c !== cat)
+                                      : [...current, cat]
+                                  );
+                                }}
+                                className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-all
+                                  ${card.editedData.categories.includes(cat)
+                                    ? 'bg-blue-600 border-blue-600 text-white'
+                                    : 'bg-white border-gray-300 text-gray-600 hover:border-blue-400'
+                                  }`}
+                              >
+                                {cat}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                       {[
                         { key: 'company', label: '회사명', colSpan: 2 },
                         { key: 'name', label: '이름', colSpan: 1 },
@@ -395,7 +438,7 @@ export default function BatchPage() {
                           <label className="text-xs text-gray-500 mb-1 block">{label}</label>
                           <input
                             type="text"
-                            value={(card.editedData as Record<string, string>)[key]}
+                            value={(card.editedData as Record<string, string | string[]>)[key] as string}
                             onChange={(e) => updateField(card.id, key, e.target.value)}
                             className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg
                                        focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white"

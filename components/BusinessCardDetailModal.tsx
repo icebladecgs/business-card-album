@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { X, Edit2, Trash2, Star, Building2, User, Phone, Mail, Briefcase, FileText, Check, Tag } from 'lucide-react';
 import type { BusinessCard } from '@/types/business-card';
 import { formatPhoneNumber, formatDate } from '@/lib/utils';
@@ -41,6 +41,15 @@ export default function BusinessCardDetailModal({
   useEffect(() => {
     setCategoryList(getCategoryList());
   }, []);
+
+  // ESC 키로 모달 닫기
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !isEditing) onClose();
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isEditing, onClose]);
 
   const toggleDraftCategory = (cat: string) => {
     setDraftCategories((prev) =>

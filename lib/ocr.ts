@@ -61,6 +61,26 @@ async function preprocessImageForOCR(imageData: string): Promise<string> {
           d[i + 2] = enhanced;
         }
 
+        // 선명화 패스 (Laplacian sharpen) — 텍스트 경계를 강조해 OCR 정확도 향상
+        const W = canvas.width;
+        const H = canvas.height;
+        const src = new Uint8ClampedArray(d); // 대비 강화 결과 복사
+        for (let y = 1; y < H - 1; y++) {
+          for (let x = 1; x < W - 1; x++) {
+            const ci = (y * W + x) * 4;
+            const center = src[ci];
+            const top    = src[((y - 1) * W + x) * 4];
+            const bottom = src[((y + 1) * W + x) * 4];
+            const left   = src[(y * W + (x - 1)) * 4];
+            const right  = src[(y * W + (x + 1)) * 4];
+            // 50% blend: original + laplacian sharpening
+            const v = Math.min(255, Math.max(0, Math.round((center + 5 * center - top - bottom - left - right) / 2)));
+            d[ci] = v;
+            d[ci + 1] = v;
+            d[ci + 2] = v;
+          }
+        }
+
         ctx.putImageData(imgData, 0, 0);
         resolve(canvas.toDataURL('image/png')); // PNG = 손실 없음
       } catch {
@@ -79,7 +99,7 @@ export async function extractTextFromImage(imageData: string): Promise<string> {
   try {
     const preprocessed = await preprocessImageForOCR(imageData);
     const result = await Tesseract.recognize(preprocessed, 'kor+eng', {
-      logger: (m: any) => {
+      logger: (m: { status: string; progress: number }) => {
         if (m.status === 'recognizing text') {
           console.log(`OCR Progress: ${Math.round(m.progress * 100)}%`);
         }

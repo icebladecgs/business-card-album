@@ -76,6 +76,20 @@ export default function BusinessCardItem({ card, onClick }: BusinessCardItemProp
             <span className="text-xs truncate">{card.email}</span>
           </div>
         )}
+
+        {/* 관계 구분 태그 */}
+        {card.categories && card.categories.length > 0 && (
+          <div className="flex flex-wrap gap-1 pt-1 border-t border-gray-100">
+            {card.categories.slice(0, 3).map(cat => (
+              <span key={cat} className="px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded text-xs font-medium">
+                {cat}
+              </span>
+            ))}
+            {card.categories.length > 3 && (
+              <span className="text-xs text-gray-400">+{card.categories.length - 3}</span>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Download, Upload as UploadIcon } from 'lucide-react';
+import { Plus, Download, Upload as UploadIcon, Search } from 'lucide-react';
 import type { BusinessCard, CompanyGroup, PaginationInfo } from '@/types/business-card';
 import {
   getAllCards,
@@ -30,6 +30,9 @@ export default function HomePage() {
   const [selectedCard, setSelectedCard] = useState<BusinessCard | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [isLoading, setIsLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  type SortOrder = 'newest' | 'oldest' | 'name' | 'company' | 'fav-first';
+  const [sortOrder, setSortOrder] = useState<SortOrder>('newest');
 
   // 반응형 페이지당 카드 수 (모바일: 4개, 데스크탑: 6개)
   const [itemsPerPage, setItemsPerPage] = useState(6);
@@ -70,19 +73,59 @@ export default function HomePage() {
     loadData();
   }, []);
 
-  // 필터링된 카드 목록
+  // 필터링 + 정렬된 카드 목록
   const filteredCards = useMemo(() => {
-    if (!selectedCompany) return cards;
-    if (selectedCompany.startsWith('category:')) {
+    let result = [...cards];
+
+    // 검색 필터
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter(card =>
+        card.name.toLowerCase().includes(q) ||
+        card.company.toLowerCase().includes(q) ||
+        card.email.toLowerCase().includes(q) ||
+        card.phone.includes(q) ||
+        card.title.toLowerCase().includes(q) ||
+        card.memo.toLowerCase().includes(q)
+      );
+    }
+
+    // 보기 구분 필터
+    if (selectedCompany === 'favorites') {
+      result = result.filter(card => card.favorite);
+    } else if (selectedCompany.startsWith('category:')) {
       const cat = selectedCompany.slice('category:'.length);
-      return cards.filter((card) => card.categories?.includes(cat));
-    }
-    if (selectedCompany.startsWith('company:')) {
+      result = result.filter((card) => card.categories?.includes(cat));
+    } else if (selectedCompany.startsWith('company:')) {
       const company = selectedCompany.slice('company:'.length);
-      return cards.filter((card) => (card.company || '미분류') === company);
+      result = result.filter((card) => (card.company || '미분류') === company);
     }
-    return cards;
-  }, [cards, selectedCompany]);
+
+    // 정렬
+    switch (sortOrder) {
+      case 'name':
+        result.sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+        break;
+      case 'company':
+        result.sort((a, b) =>
+          (a.company || '미분류').localeCompare(b.company || '미분류', 'ko')
+        );
+        break;
+      case 'oldest':
+        result.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+        break;
+      case 'fav-first':
+        result.sort((a, b) => {
+          if (b.favorite !== a.favorite) return (b.favorite ? 1 : 0) - (a.favorite ? 1 : 0);
+          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        });
+        break;
+      default: // newest
+        result.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    }
+
+    return result;
+  }, [cards, selectedCompany, searchQuery, sortOrder]);
 
   // 페이지네이션 정보
   const pagination: PaginationInfo = useMemo(() => {
@@ -135,17 +178,17 @@ export default function HomePage() {
 
   const handleToggleFavorite = async (id: string) => {
     try {
+      // 즉시 UI 반영 (냙관적 업데이트)
+      if (selectedCard && selectedCard.id === id) {
+        setSelectedCard(prev => prev ? { ...prev, favorite: !prev.favorite } : null);
+      }
       await toggleFavorite(id);
       await loadData();
-      
-      // 모달이 열려있으면 업데이트
-      if (selectedCard && selectedCard.id === id) {
-        const updated = cards.find((c) => c.id === id);
-        if (updated) {
-          setSelectedCard(updated);
-        }
-      }
     } catch (error) {
+      // 실패 시 원래대로 실전 실패 쇼리
+      if (selectedCard && selectedCard.id === id) {
+        setSelectedCard(prev => prev ? { ...prev, favorite: !prev.favorite } : null);
+      }
       alert('즐겨찾기 설정에 실패했습니다.');
     }
   };
@@ -224,8 +267,24 @@ export default function HomePage() {
 
       {/* 메인 컨텐츠 */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* 회사 필터 */}
-        <div className="mb-6">
+        {/* 검색창 */}
+        <div className="mb-4">
+          <div className="relative">
+            <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
+              placeholder="이름, 회사, 전화번호, 이메일 검색..."
+              className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-300 bg-white
+                         text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent
+                         placeholder:text-gray-400"
+            />
+          </div>
+        </div>
+
+        {/* 보기 구분 필터 */}
+        <div className="mb-4">
           <CompanyFilter
             companies={companyGroups}
             categories={categories}
@@ -235,6 +294,38 @@ export default function HomePage() {
               setCurrentPage(1);
             }}
           />
+        </div>
+
+        {/* 정렬 옵션 */}
+        <div className="mb-5 flex items-center gap-2 flex-wrap">
+          <span className="text-xs text-gray-500 font-medium">정렬:</span>
+          {([
+            { key: 'newest',   label: '최신순' },
+            { key: 'oldest',   label: '오래된순' },
+            { key: 'name',     label: '이름순' },
+            { key: 'company',  label: '회사순' },
+            { key: 'fav-first', label: '⭐ 먼저' },
+          ] as const).map(({ key, label }) => (
+            <button
+              key={key}
+              onClick={() => { setSortOrder(key); setCurrentPage(1); }}
+              className={`px-2.5 py-1 text-xs rounded-full border font-medium transition-all
+                ${sortOrder === key
+                  ? 'bg-gray-700 border-gray-700 text-white'
+                  : 'bg-white border-gray-300 text-gray-600 hover:border-gray-500'
+                }`}
+            >
+              {label}
+            </button>
+          ))}
+          {(searchQuery || selectedCompany || sortOrder !== 'newest') && (
+            <button
+              onClick={() => { setSearchQuery(''); setSelectedCompany(''); setSortOrder('newest'); setCurrentPage(1); }}
+              className="px-2.5 py-1 text-xs rounded-full border border-red-200 text-red-500 hover:bg-red-50 font-medium transition-all ml-auto"
+            >
+              초기화
+            </button>
+          )}
         </div>
 
         {/* 명함 그리드 */}
