@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import type { OcrResult } from '@/types/business-card';
 import { getCategoryList, addCategoryItem, removeCategoryItem } from '@/lib/storage';
 
@@ -35,6 +35,31 @@ export default function OcrPreviewForm({
   const [categoryList, setCategoryList] = useState<string[]>([]);
   const [showAddInput, setShowAddInput] = useState(false);
   const [newCategory, setNewCategory] = useState('');
+
+  const verification = useMemo(() => {
+    const checks = [
+      { key: 'company', label: '회사명', ok: Boolean(formData.company.trim()) },
+      { key: 'name', label: '이름', ok: Boolean(formData.name.trim()) },
+      { key: 'title', label: '직책', ok: Boolean(formData.title.trim()) },
+      { key: 'phone', label: '전화번호', ok: Boolean(formData.phone.trim()) },
+      { key: 'email', label: '이메일', ok: Boolean(formData.email.trim()) },
+    ] as const;
+
+    return {
+      isLowConfidence: ocrResult.confidence > 0 && ocrResult.confidence < 0.6,
+      checks,
+      missingCount: checks.filter((field) => !field.ok).length,
+    };
+  }, [formData, ocrResult.confidence]);
+
+  const getInputClassName = (field: 'company' | 'name' | 'title' | 'phone' | 'email') => {
+    const base = 'w-full px-4 py-3 text-base border rounded-lg focus:outline-none focus:ring-2 focus:border-transparent';
+    const needsAttention = verification.isLowConfidence && !formData[field].trim();
+
+    return needsAttention
+      ? `${base} border-amber-300 bg-amber-50 focus:ring-amber-500`
+      : `${base} border-gray-300 focus:ring-blue-500`;
+  };
 
   useEffect(() => {
     setCategoryList(getCategoryList());
@@ -85,6 +110,31 @@ export default function OcrPreviewForm({
           ✏️ OCR 결과를 확인하고 수정하세요
         </p>
       </div>
+
+      {verification.isLowConfidence && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-2">
+          <p className="text-sm font-semibold text-amber-800">
+            ⚠️ OCR 신뢰도가 낮습니다. 아래 항목을 특히 확인해주세요.
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {verification.checks.map((field) => (
+              <span
+                key={field.key}
+                className={`px-2 py-1 rounded-full text-xs font-medium ${
+                  field.ok
+                    ? 'bg-green-100 text-green-700'
+                    : 'bg-amber-100 text-amber-700'
+                }`}
+              >
+                {field.label} {field.ok ? '확인됨' : '확인 필요'}
+              </span>
+            ))}
+          </div>
+          <p className="text-xs text-amber-700">
+            미확인 항목 {verification.missingCount}개
+          </p>
+        </div>
+      )}
 
       {/* 관계 구분 */}
       <div>
@@ -166,8 +216,7 @@ export default function OcrPreviewForm({
           value={formData.company}
           onChange={handleChange}
           placeholder="회사명을 입력하세요"
-          className="w-full px-4 py-3 text-base border border-gray-300 rounded-lg
-                     focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          className={getInputClassName('company')}
         />
       </div>
 
@@ -183,8 +232,7 @@ export default function OcrPreviewForm({
           onChange={handleChange}
           placeholder="이름을 입력하세요"
           required
-          className="w-full px-4 py-3 text-base border border-gray-300 rounded-lg
-                     focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          className={getInputClassName('name')}
         />
       </div>
 
@@ -199,8 +247,7 @@ export default function OcrPreviewForm({
           value={formData.title}
           onChange={handleChange}
           placeholder="직책을 입력하세요"
-          className="w-full px-4 py-3 text-base border border-gray-300 rounded-lg
-                     focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          className={getInputClassName('title')}
         />
       </div>
 
@@ -215,8 +262,7 @@ export default function OcrPreviewForm({
           value={formData.phone}
           onChange={handleChange}
           placeholder="010-1234-5678"
-          className="w-full px-4 py-3 text-base border border-gray-300 rounded-lg
-                     focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          className={getInputClassName('phone')}
         />
       </div>
 
@@ -231,8 +277,7 @@ export default function OcrPreviewForm({
           value={formData.email}
           onChange={handleChange}
           placeholder="example@company.com"
-          className="w-full px-4 py-3 text-base border border-gray-300 rounded-lg
-                     focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          className={getInputClassName('email')}
         />
       </div>
 

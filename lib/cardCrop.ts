@@ -5,9 +5,17 @@ const CARD_WIDTH = 900;
 const CARD_HEIGHT = 500;
 // Downscaled width for edge detection (performance)
 const PROCESS_WIDTH = 600;
+const CARD_RATIO = 1.8;
 
 type Point = [number, number];
 type Quad = [Point, Point, Point, Point]; // TL, TR, BR, BL
+
+interface BoundingBox {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
 
 export interface CropResult {
   croppedImage: string;
@@ -92,46 +100,252 @@ function sobelEdges(gray: Float32Array, width: number, height: number): Float32A
 
 // ─── Corner detection ─────────────────────────────────────────────────────────
 
+function findRangeByThreshold(values: Float32Array, threshold: number): [number, number] | null {
+  let start = -1;
+  let end = -1;
+
+  for (let i = 0; i < values.length; i++) {
+    if (values[i] >= threshold) {
+      start = i;
+      break;
+    }
+  }
+
+  if (start === -1) return null;
+
+  for (let i = values.length - 1; i >= 0; i--) {
+    if (values[i] >= threshold) {
+      end = i;
+      break;
+    }
+  }
+
+  return end > start ? [start, end] : null;
+}
+
+function clampBox(box: BoundingBox, width: number, height: number): BoundingBox {
+  return {
+    left: Math.max(0, Math.min(width - 2, box.left)),
+    top: Math.max(0, Math.min(height - 2, box.top)),
+    right: Math.max(1, Math.min(width - 1, box.right)),
+    bottom: Math.max(1, Math.min(height - 1, box.bottom)),
+  };
+}
+
+function expandBox(box: BoundingBox, width: number, height: number, ratio: number): BoundingBox {
+  const w = box.right - box.left;
+  const h = box.bottom - box.top;
+  let newW = w;
+  let newH = h;
+
+  if (w / h > ratio) {
+    newH = Math.round(w / ratio);
+  } else {
+    newW = Math.round(h * ratio);
+  }
+
+  const cx = Math.round((box.left + box.right) / 2);
+  const cy = Math.round((box.top + box.bottom) / 2);
+
+  const expanded: BoundingBox = {
+    left: Math.round(cx - newW / 2),
+    top: Math.round(cy - newH / 2),
+    right: Math.round(cx + newW / 2),
+    bottom: Math.round(cy + newH / 2),
+  };
+
+  return clampBox(expanded, width, height);
+}
+
+function quadCenter(quad: Quad): Point {
+  const cx = (quad[0][0] + quad[1][0] + quad[2][0] + quad[3][0]) / 4;
+  const cy = (quad[0][1] + quad[1][1] + quad[2][1] + quad[3][1]) / 4;
+  return [cx, cy];
+}
+
+function insetQuad(quad: Quad, insetRatio: number): Quad {
+  const [cx, cy] = quadCenter(quad);
+  return quad.map(([x, y]) => {
+    const nx = cx + (x - cx) * insetRatio;
+    const ny = cy + (y - cy) * insetRatio;
+    return [nx, ny] as Point;
+  }) as Quad;
+}
+
+function dist(a: Point, b: Point): number {
+  return Math.hypot(a[0] - b[0], a[1] - b[1]);
+}
+
+function quadArea(quad: Quad): number {
+  const [tl, tr, br, bl] = quad;
+  return Math.abs(
+    (tl[0] * (tr[1] - bl[1]) + tr[0] * (br[1] - tl[1]) +
+      br[0] * (bl[1] - tr[1]) + bl[0] * (tl[1] - br[1])) / 2
+  );
+}
+
+function isValidCardQuad(quad: Quad, box: BoundingBox): boolean {
+  const top = dist(quad[0], quad[1]);
+  const right = dist(quad[1], quad[2]);
+  const bottom = dist(quad[3], quad[2]);
+  const left = dist(quad[0], quad[3]);
+
+  if (top < 8 || right < 8 || bottom < 8 || left < 8) return false;
+
+  const ratio1 = top / Math.max(1, left);
+  const ratio2 = bottom / Math.max(1, right);
+  if (ratio1 < 1.15 || ratio1 > 2.75) return false;
+  if (ratio2 < 1.15 || ratio2 > 2.75) return false;
+
+  const area = quadArea(quad);
+  const boxArea = Math.max(1, (box.right - box.left) * (box.bottom - box.top));
+  if (area < boxArea * 0.3 || area > boxArea * 1.1) return false;
+
+  return true;
+}
+
+function detectCardBoundingBox(edges: Float32Array, width: number, height: number): BoundingBox | null {
+  let maxEdge = 0;
+  for (let i = 0; i < edges.length; i++) {
+    if (edges[i] > maxEdge) maxEdge = edges[i];
+  }
+
+  if (maxEdge < 14) return null;
+
+  const edgeThreshold = Math.max(16, maxEdge * 0.22);
+  const rowScores = new Float32Array(height);
+  const colScores = new Float32Array(width);
+
+  for (let y = 1; y < height - 1; y++) {
+    for (let x = 1; x < width - 1; x++) {
+      if (edges[y * width + x] < edgeThreshold) continue;
+      rowScores[y] += 1;
+      colScores[x] += 1;
+    }
+  }
+
+  let rowMax = 0;
+  let colMax = 0;
+  for (let y = 0; y < height; y++) rowMax = Math.max(rowMax, rowScores[y]);
+  for (let x = 0; x < width; x++) colMax = Math.max(colMax, colScores[x]);
+
+  if (rowMax < width * 0.06 || colMax < height * 0.06) return null;
+
+  const rowRange = findRangeByThreshold(rowScores, rowMax * 0.35);
+  const colRange = findRangeByThreshold(colScores, colMax * 0.35);
+  if (!rowRange || !colRange) return null;
+
+  const [topRaw, bottomRaw] = rowRange;
+  const [leftRaw, rightRaw] = colRange;
+  const pad = Math.round(Math.min(width, height) * 0.012);
+
+  let box: BoundingBox = {
+    left: leftRaw - pad,
+    top: topRaw - pad,
+    right: rightRaw + pad,
+    bottom: bottomRaw + pad,
+  };
+
+  box = clampBox(box, width, height);
+
+  const bw = box.right - box.left;
+  const bh = box.bottom - box.top;
+  const area = bw * bh;
+  const imgArea = width * height;
+  const ratio = bw / Math.max(1, bh);
+
+  if (area < imgArea * 0.06 || area > imgArea * 0.95) return null;
+
+  // 명함 비율(약 1.8)에 가깝도록 박스 보정
+  if (ratio < 1.2 || ratio > 2.5) {
+    box = expandBox(box, width, height, CARD_RATIO);
+  }
+
+  return box;
+}
+
+function pickCornerInRegion(
+  edges: Float32Array,
+  width: number,
+  box: BoundingBox,
+  corner: 'tl' | 'tr' | 'br' | 'bl',
+  threshold: number
+): Point | null {
+  const cx = (box.left + box.right) / 2;
+  const cy = (box.top + box.bottom) / 2;
+  let best: Point | null = null;
+  let bestScore = corner === 'tl' || corner === 'bl' ? Infinity : -Infinity;
+
+  for (let y = box.top; y <= box.bottom; y++) {
+    for (let x = box.left; x <= box.right; x++) {
+      if (edges[y * width + x] < threshold) continue;
+
+      if (corner === 'tl' && (x > cx || y > cy)) continue;
+      if (corner === 'tr' && (x < cx || y > cy)) continue;
+      if (corner === 'br' && (x < cx || y < cy)) continue;
+      if (corner === 'bl' && (x > cx || y < cy)) continue;
+
+      const s = x + y;
+      const d = x - y;
+
+      if (corner === 'tl') {
+        if (s < bestScore) {
+          bestScore = s;
+          best = [x, y];
+        }
+      } else if (corner === 'tr') {
+        if (d > bestScore) {
+          bestScore = d;
+          best = [x, y];
+        }
+      } else if (corner === 'br') {
+        if (s > bestScore) {
+          bestScore = s;
+          best = [x, y];
+        }
+      } else {
+        if (d < bestScore) {
+          bestScore = d;
+          best = [x, y];
+        }
+      }
+    }
+  }
+
+  return best;
+}
+
 /**
  * Find 4 corners of the card using extremal edge points:
  * TL = min(x+y),  TR = max(x−y),  BR = max(x+y),  BL = min(x−y)
  */
-function findCardCorners(edges: Float32Array, width: number, height: number): Quad | null {
+function findCardCorners(edges: Float32Array, width: number, height: number, box: BoundingBox): Quad | null {
   let maxEdge = 0;
   for (let i = 0; i < edges.length; i++) {
     if (edges[i] > maxEdge) maxEdge = edges[i];
   }
   if (maxEdge < 10) return null;
 
-  const threshold = maxEdge * 0.15;
-  const pad = Math.min(width, height) * 0.03;
+  const threshold = maxEdge * 0.2;
 
-  let tlScore = Infinity, trScore = -Infinity, brScore = -Infinity, blScore = Infinity;
-  let tl: Point = [pad, pad];
-  let tr: Point = [width - pad, pad];
-  let br: Point = [width - pad, height - pad];
-  let bl: Point = [pad, height - pad];
+  const fallback: Quad = [
+    [box.left, box.top],
+    [box.right, box.top],
+    [box.right, box.bottom],
+    [box.left, box.bottom],
+  ];
 
-  for (let y = pad; y < height - pad; y++) {
-    for (let x = pad; x < width - pad; x++) {
-      if (edges[Math.round(y) * width + Math.round(x)] < threshold) continue;
-      const s = x + y, d = x - y;
-      if (s < tlScore) { tlScore = s; tl = [x, y]; }
-      if (d > trScore) { trScore = d; tr = [x, y]; }
-      if (s > brScore) { brScore = s; br = [x, y]; }
-      if (d < blScore) { blScore = d; bl = [x, y]; }
-    }
+  const tl = pickCornerInRegion(edges, width, box, 'tl', threshold) || fallback[0];
+  const tr = pickCornerInRegion(edges, width, box, 'tr', threshold) || fallback[1];
+  const br = pickCornerInRegion(edges, width, box, 'br', threshold) || fallback[2];
+  const bl = pickCornerInRegion(edges, width, box, 'bl', threshold) || fallback[3];
+
+  const quad: Quad = [tl, tr, br, bl];
+  if (!isValidCardQuad(quad, box)) {
+    return fallback;
   }
 
-  // Reject degenerate quads
-  const area = Math.abs(
-    (tl[0] * (tr[1] - bl[1]) + tr[0] * (br[1] - tl[1]) +
-      br[0] * (bl[1] - tr[1]) + bl[0] * (tl[1] - br[1])) / 2
-  );
-  const imgArea = width * height;
-  if (area < imgArea * 0.05 || area > imgArea * 0.97) return null;
-
-  return [tl, tr, br, bl];
+  return quad;
 }
 
 // ─── Perspective warp ─────────────────────────────────────────────────────────
@@ -251,13 +465,21 @@ export async function detectAndCropCard(imageData: string): Promise<CropResult> 
     const blurred = gaussianBlur5x5(gray, processCanvas.width, processCanvas.height);
     const edges = sobelEdges(blurred, processCanvas.width, processCanvas.height);
 
-    const corners = findCardCorners(edges, processCanvas.width, processCanvas.height);
+    const box = detectCardBoundingBox(edges, processCanvas.width, processCanvas.height);
+    if (!box) {
+      return { croppedImage: imageData, detected: false };
+    }
+
+    const corners = findCardCorners(edges, processCanvas.width, processCanvas.height, box);
     if (!corners) {
       return { croppedImage: imageData, detected: false };
     }
 
+    // 배경 테두리를 조금 줄여 실제 명함 영역에 더 가깝게 정렬
+    const tightenedCorners = insetQuad(corners, 0.988);
+
     // Scale corners back to original image coordinates
-    const scaledCorners: Quad = corners.map(([x, y]) => [x / scale, y / scale]) as Quad;
+    const scaledCorners: Quad = tightenedCorners.map(([x, y]) => [x / scale, y / scale]) as Quad;
 
     const cropped = warpToRect(srcCanvas, scaledCorners, CARD_WIDTH, CARD_HEIGHT);
     return { croppedImage: cropped, detected: true };

@@ -1,6 +1,15 @@
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
 
+interface VCardContact {
+  name: string;
+  company?: string;
+  title?: string;
+  phone?: string;
+  email?: string;
+  memo?: string;
+}
+
 /**
  * Tailwind CSS 클래스 병합 유틸리티
  */
@@ -73,6 +82,86 @@ export function formatPhoneNumber(phone: string): string {
   return phone;
 }
 
+function escapeVCardValue(value: string): string {
+  return value
+    .replace(/\\/g, '\\\\')
+    .replace(/\n/g, '\\n')
+    .replace(/,/g, '\\,')
+    .replace(/;/g, '\\;');
+}
+
+function sanitizeFileNamePart(value: string): string {
+  return value.trim().replace(/[\\/:*?"<>|]/g, '-').replace(/\s+/g, '-');
+}
+
+export function createVCard(contact: VCardContact): string {
+  const lines = [
+    'BEGIN:VCARD',
+    'VERSION:3.0',
+    `FN:${escapeVCardValue(contact.name || '이름 없음')}`,
+  ];
+
+  if (contact.company) {
+    lines.push(`ORG:${escapeVCardValue(contact.company)}`);
+  }
+
+  if (contact.title) {
+    lines.push(`TITLE:${escapeVCardValue(contact.title)}`);
+  }
+
+  if (contact.phone) {
+    lines.push(`TEL;TYPE=CELL:${escapeVCardValue(contact.phone)}`);
+  }
+
+  if (contact.email) {
+    lines.push(`EMAIL;TYPE=INTERNET:${escapeVCardValue(contact.email)}`);
+  }
+
+  if (contact.memo) {
+    lines.push(`NOTE:${escapeVCardValue(contact.memo)}`);
+  }
+
+  lines.push('END:VCARD');
+  return lines.join('\n');
+}
+
+export function createVCardFileName(contact: Pick<VCardContact, 'name' | 'company'>): string {
+  const namePart = sanitizeFileNamePart(contact.name || 'contact');
+  const companyPart = sanitizeFileNamePart(contact.company || 'card');
+  return `${namePart}-${companyPart}.vcf`;
+}
+
+export async function copyText(text: string): Promise<boolean> {
+  if (!text) return false;
+
+  if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      // Fallback below
+    }
+  }
+
+  if (typeof document === 'undefined') {
+    return false;
+  }
+
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.setAttribute('readonly', 'true');
+  textarea.style.position = 'absolute';
+  textarea.style.left = '-9999px';
+  document.body.appendChild(textarea);
+  textarea.select();
+
+  try {
+    return document.execCommand('copy');
+  } finally {
+    document.body.removeChild(textarea);
+  }
+}
+
 /**
  * UUID 생성
  */
@@ -83,7 +172,7 @@ export function generateId(): string {
 /**
  * 디바운스 함수
  */
-export function debounce<T extends (...args: any[]) => any>(
+export function debounce<T extends (...args: unknown[]) => void>(
   func: T,
   wait: number
 ): (...args: Parameters<T>) => void {

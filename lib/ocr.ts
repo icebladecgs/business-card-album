@@ -1,6 +1,11 @@
 import Tesseract from 'tesseract.js';
 import type { OcrResult } from '@/types/business-card';
 
+interface OcrProgressMessage {
+  status: string;
+  progress: number;
+}
+
 // 한국 성씨 목록 (OCR 이름 감지용)
 const KOREAN_SURNAMES = new Set([
   '강', '고', '공', '곽', '구', '권', '금', '김', '나', '남',
@@ -316,9 +321,9 @@ export async function processBusinessCardWithProgress(
     onProgress(0.15);
 
     const result = await Tesseract.recognize(preprocessed, 'kor+eng', {
-      logger: (m: any) => {
-        if (m.status === 'recognizing text') {
-          onProgress(0.15 + m.progress * 0.75);
+      logger: (message: OcrProgressMessage) => {
+        if (message.status === 'recognizing text') {
+          onProgress(0.15 + message.progress * 0.75);
         }
       },
     });

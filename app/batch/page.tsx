@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import {
@@ -322,11 +323,16 @@ export default function BatchPage() {
                 {/* 카드 헤더 행 */}
                 <div className="flex items-center gap-3 p-3">
                   {/* 썸네일 */}
-                  <img
-                    src={card.imageData}
-                    alt="명함"
-                    className="w-20 h-12 object-cover rounded-lg border border-gray-200 flex-shrink-0 bg-gray-50"
-                  />
+                  <div className="relative w-20 h-12 rounded-lg border border-gray-200 flex-shrink-0 bg-gray-50 overflow-hidden">
+                    <Image
+                      src={card.imageData}
+                      alt="명함"
+                      fill
+                      unoptimized
+                      sizes="80px"
+                      className="object-cover"
+                    />
+                  </div>
 
                   {/* 상태/내용 */}
                   <div className="flex-1 min-w-0">

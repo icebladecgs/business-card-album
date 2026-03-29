@@ -21,6 +21,101 @@ const cardStore = localforage.createInstance({
 const STORAGE_KEY = 'business_cards';
 const VERSION = '1.0.0';
 
+type SpreadsheetRow = Record<string, unknown>;
+
+function normalizeHeader(value: string): string {
+  return value.toLowerCase().replace(/\s+/g, '').replace(/[()\[\]\-_.]/g, '');
+}
+
+function pickFirstValue(row: SpreadsheetRow, aliases: string[]): string {
+  const normalizedAliasSet = new Set(aliases.map(normalizeHeader));
+
+  for (const [key, raw] of Object.entries(row)) {
+    if (!normalizedAliasSet.has(normalizeHeader(key))) continue;
+    if (raw === null || raw === undefined) continue;
+    const text = String(raw).trim();
+    if (text) return text;
+  }
+
+  return '';
+}
+
+function pickAllValues(row: SpreadsheetRow, aliases: string[]): string[] {
+  const normalizedAliasSet = new Set(aliases.map(normalizeHeader));
+  const values: string[] = [];
+
+  for (const [key, raw] of Object.entries(row)) {
+    if (!normalizedAliasSet.has(normalizeHeader(key))) continue;
+    if (raw === null || raw === undefined) continue;
+    const text = String(raw).trim();
+    if (text) values.push(text);
+  }
+
+  return values;
+}
+
+function parseCategoriesFromRow(row: SpreadsheetRow): string[] {
+  const sourceValues = pickAllValues(row, [
+    '보기',
+    '보기구분',
+    '구분',
+    '관계',
+    '관계구분',
+    '카테고리',
+    'category',
+    'categories',
+    'tag',
+    'tags',
+  ]);
+
+  if (!sourceValues.length) return [];
+
+  const splitTokens = sourceValues
+    .flatMap((value) => value.split(/[;,/|\n]+/))
+    .flatMap((value) => value.split('·'))
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+  return Array.from(new Set(splitTokens));
+}
+
+function rowToCardInput(row: SpreadsheetRow): CreateBusinessCardInput {
+  const name = pickFirstValue(row, ['name', '이름', '성명', '담당자', '담당자명']);
+  const company = pickFirstValue(row, ['company', '회사', '회사명', '소속']);
+  const title = pickFirstValue(row, ['title', '직책', '직급', '부서', 'position']);
+  const phone = pickFirstValue(row, [
+    'phone',
+    '전화',
+    '전화번호',
+    '휴대폰',
+    '휴대전화',
+    '연락처',
+    'mobile',
+    'tel',
+    'cell',
+  ]);
+  const email = pickFirstValue(row, ['email', '이메일', '메일', 'e-mail']);
+  const memo = pickFirstValue(row, ['memo', '메모', '비고', 'note', 'notes']);
+  const categories = parseCategoriesFromRow(row);
+
+  return {
+    name,
+    company,
+    title,
+    phone,
+    email,
+    memo,
+    favorite: false,
+    categories,
+  };
+}
+
+function makeDuplicateSignature(input: CreateBusinessCardInput): string {
+  return [input.name, input.company, input.phone, input.email]
+    .map((part) => part.trim().toLowerCase())
+    .join('|');
+}
+
 /**
  * 전체 명함 목록 불러오기
  */
@@ -245,6 +340,92 @@ export async function importFromJson(jsonString: string): Promise<number> {
   } catch (error) {
     console.error('Failed to import:', error);
     throw new Error('가져오기에 실패했습니다.');
+  }
+}
+
+/**
+ * Excel/CSV 파일에서 가져오기 (리멤버 내보내기 대응)
+ */
+export async function importFromSpreadsheet(file: File): Promise<number> {
+  try {
+    const XLSX = await import('xlsx');
+    const buffer = await file.arrayBuffer();
+    const workbook = XLSX.read(buffer, { type: 'array' });
+    const firstSheetName = workbook.SheetNames[0];
+
+    if (!firstSheetName) {
+      throw new Error('시트가 비어 있습니다.');
+    }
+
+    const sheet = workbook.Sheets[firstSheetName];
+    const rows = XLSX.utils.sheet_to_json<SpreadsheetRow>(sheet, { defval: '' });
+
+    if (!rows.length) {
+      return 0;
+    }
+
+    const existingCards = await getAllCards();
+    const existingSignatures = new Set(
+      existingCards.map((card) =>
+        makeDuplicateSignature({
+          name: card.name || '',
+          company: card.company || '',
+          title: card.title || '',
+          phone: card.phone || '',
+          email: card.email || '',
+          memo: card.memo || '',
+          favorite: Boolean(card.favorite),
+          categories: card.categories || [],
+          imageFront: card.imageFront,
+          rawOcrText: card.rawOcrText,
+        })
+      )
+    );
+
+    const now = new Date().toISOString();
+    const newCards: BusinessCard[] = [];
+    const importedCategorySet = new Set<string>();
+
+    for (const row of rows) {
+      const input = rowToCardInput(row);
+      if (!input.name && !input.phone && !input.email && !input.company) continue;
+
+      const signature = makeDuplicateSignature(input);
+      if (existingSignatures.has(signature)) continue;
+
+      existingSignatures.add(signature);
+      for (const category of input.categories || []) {
+        if (category.trim()) importedCategorySet.add(category.trim());
+      }
+      newCards.push({
+        id: generateId(),
+        name: input.name,
+        company: input.company,
+        title: input.title,
+        phone: input.phone,
+        email: input.email,
+        memo: input.memo,
+        favorite: false,
+        categories: input.categories || [],
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+
+    if (!newCards.length) {
+      return 0;
+    }
+
+    // 리멤버/엑셀의 보기 구분 값을 앱의 관계 구분 목록에 자동 반영
+    for (const category of importedCategorySet) {
+      addCategoryItem(category);
+    }
+
+    await cardStore.setItem(STORAGE_KEY, [...existingCards, ...newCards]);
+    return newCards.length;
+  } catch (error) {
+    console.error('Failed to import spreadsheet:', error);
+    throw new Error('엑셀/CSV 가져오기에 실패했습니다. 파일 형식을 확인해주세요.');
   }
 }
 

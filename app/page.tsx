@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Download, Upload as UploadIcon, Search } from 'lucide-react';
+import { Plus, Download, Upload as UploadIcon, Search, Star, Building2, Clock3, BarChart3 } from 'lucide-react';
 import type { BusinessCard, CompanyGroup, PaginationInfo } from '@/types/business-card';
 import {
   getAllCards,
@@ -12,6 +12,7 @@ import {
   toggleFavorite,
   exportToJson,
   importFromJson,
+  importFromSpreadsheet,
   getCategoryList,
 } from '@/lib/storage';
 import { downloadFile } from '@/lib/utils';
@@ -20,6 +21,9 @@ import BusinessCardDetailModal from '@/components/BusinessCardDetailModal';
 import CompanyFilter from '@/components/CompanyFilter';
 import PaginationControls from '@/components/PaginationControls';
 import InstallAppButton from '@/components/InstallAppButton';  // PWA 설치 버튼
+
+const APP_VERSION = 'v1.0.0';
+const LAST_UPDATED_AT = '2026.03.29 21:20';
 
 export default function HomePage() {
   const router = useRouter();
@@ -73,6 +77,45 @@ export default function HomePage() {
     loadData();
   }, []);
 
+  const dashboardStats = useMemo(() => {
+    const sortedCompanies = [...companyGroups].sort((a, b) => {
+      if (b.count !== a.count) return b.count - a.count;
+      return a.company.localeCompare(b.company, 'ko');
+    });
+
+    const categoryCounts = cards.reduce<Record<string, number>>((acc, card) => {
+      for (const category of card.categories || []) {
+        acc[category] = (acc[category] || 0) + 1;
+      }
+      return acc;
+    }, {});
+
+    const topCategories = Object.entries(categoryCounts)
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => {
+        if (b.count !== a.count) return b.count - a.count;
+        return a.name.localeCompare(b.name, 'ko');
+      })
+      .slice(0, 5);
+
+    const favoriteCount = cards.filter((card) => card.favorite).length;
+    const recentCount = cards.filter((card) => {
+      const createdAt = new Date(card.createdAt).getTime();
+      const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+      return createdAt >= sevenDaysAgo;
+    }).length;
+    const topCompany = sortedCompanies[0] ?? null;
+
+    return {
+      totalCards: cards.length,
+      favoriteCount,
+      recentCount,
+      topCompany,
+      topCompanies: sortedCompanies.slice(0, 5),
+      topCategories,
+    };
+  }, [cards, companyGroups]);
+
   // 필터링 + 정렬된 카드 목록
   const filteredCards = useMemo(() => {
     let result = [...cards];
@@ -86,7 +129,8 @@ export default function HomePage() {
         card.email.toLowerCase().includes(q) ||
         card.phone.includes(q) ||
         card.title.toLowerCase().includes(q) ||
-        card.memo.toLowerCase().includes(q)
+        card.memo.toLowerCase().includes(q) ||
+        (card.categories?.some((category) => category.toLowerCase().includes(q)) ?? false)
       );
     }
 
@@ -171,7 +215,7 @@ export default function HomePage() {
       await deleteCard(id);
       await loadData();
       setSelectedCard(null);
-    } catch (error) {
+    } catch {
       alert('명함 삭제에 실패했습니다.');
     }
   };
@@ -184,7 +228,7 @@ export default function HomePage() {
       }
       await toggleFavorite(id);
       await loadData();
-    } catch (error) {
+    } catch {
       // 실패 시 원래대로 실전 실패 쇼리
       if (selectedCard && selectedCard.id === id) {
         setSelectedCard(prev => prev ? { ...prev, favorite: !prev.favorite } : null);
@@ -198,7 +242,7 @@ export default function HomePage() {
       const jsonData = await exportToJson();
       const filename = `business-cards-${new Date().toISOString().split('T')[0]}.json`;
       downloadFile(jsonData, filename);
-    } catch (error) {
+    } catch {
       alert('내보내기에 실패했습니다.');
     }
   };
@@ -206,19 +250,56 @@ export default function HomePage() {
   const handleImport = async () => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = 'application/json';
+    input.accept = '.json,.xlsx,.xls,.csv,application/json';
     
     input.onchange = async (e) => {
       const file = (e.target as HTMLInputElement).files?.[0];
       if (!file) return;
 
       try {
-        const text = await file.text();
-        const count = await importFromJson(text);
+        let count = 0;
+        const lowerName = file.name.toLowerCase();
+
+        if (lowerName.endsWith('.json')) {
+          const text = await file.text();
+          count = await importFromJson(text);
+        } else if (
+          lowerName.endsWith('.xlsx') ||
+          lowerName.endsWith('.xls') ||
+          lowerName.endsWith('.csv')
+        ) {
+          count = await importFromSpreadsheet(file);
+        } else {
+          throw new Error('unsupported-file-type');
+        }
+
         alert(`${count}개의 명함을 가져왔습니다.`);
         await loadData();
-      } catch (error) {
-        alert('가져오기에 실패했습니다. 파일 형식을 확인해주세요.');
+      } catch {
+        alert('가져오기에 실패했습니다. JSON/엑셀/CSV 파일 형식을 확인해주세요.');
+      }
+    };
+
+    input.click();
+  };
+
+  const handleRememberImport = async () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.xlsx,.xls,.csv';
+
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+
+      try {
+        const count = await importFromSpreadsheet(file);
+        alert(
+          `${count}개의 명함을 리멤버 파일에서 가져왔습니다.\n(리멤버 내보내기 특성상 사진은 제외되고 연락처 정보만 가져옵니다.)`
+        );
+        await loadData();
+      } catch {
+        alert('리멤버 파일 가져오기에 실패했습니다. 엑셀/CSV 파일인지 확인해주세요.');
       }
     };
 
@@ -242,10 +323,25 @@ export default function HomePage() {
       <header className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
-            <h1 className="text-2xl font-bold text-gray-900">📇 명함첩</h1>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-2xl font-bold text-gray-900">📇 명함첩</h1>
+              <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 text-xs font-semibold">
+                {APP_VERSION}
+              </span>
+              <span className="text-xs text-gray-500">
+                업데이트 {LAST_UPDATED_AT}
+              </span>
+            </div>
             
             <div className="flex items-center gap-2">
               <InstallAppButton />
+              <button
+                onClick={handleRememberImport}
+                className="px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors"
+                title="리멤버 엑셀/CSV 가져오기"
+              >
+                리멤버 가져오기
+              </button>
               <button
                 onClick={handleExport}
                 className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
@@ -267,6 +363,126 @@ export default function HomePage() {
 
       {/* 메인 컨텐츠 */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <section className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <div className="rounded-2xl border border-blue-100 bg-white/90 p-4 shadow-sm">
+            <div className="mb-3 flex items-center justify-between">
+              <span className="text-sm font-medium text-gray-500">전체 명함</span>
+              <BarChart3 size={18} className="text-blue-600" />
+            </div>
+            <p className="text-2xl font-bold text-gray-900">{dashboardStats.totalCards}</p>
+            <p className="mt-1 text-xs text-gray-500">저장된 연락처 기준</p>
+          </div>
+
+          <div className="rounded-2xl border border-yellow-100 bg-white/90 p-4 shadow-sm">
+            <div className="mb-3 flex items-center justify-between">
+              <span className="text-sm font-medium text-gray-500">즐겨찾기</span>
+              <Star size={18} className="text-yellow-500" />
+            </div>
+            <p className="text-2xl font-bold text-gray-900">{dashboardStats.favoriteCount}</p>
+            <p className="mt-1 text-xs text-gray-500">중요 연락처 빠른 확인</p>
+          </div>
+
+          <div className="rounded-2xl border border-emerald-100 bg-white/90 p-4 shadow-sm">
+            <div className="mb-3 flex items-center justify-between">
+              <span className="text-sm font-medium text-gray-500">최근 7일</span>
+              <Clock3 size={18} className="text-emerald-600" />
+            </div>
+            <p className="text-2xl font-bold text-gray-900">{dashboardStats.recentCount}</p>
+            <p className="mt-1 text-xs text-gray-500">최근 등록된 명함</p>
+          </div>
+
+          <div className="rounded-2xl border border-violet-100 bg-white/90 p-4 shadow-sm">
+            <div className="mb-3 flex items-center justify-between">
+              <span className="text-sm font-medium text-gray-500">주요 회사</span>
+              <Building2 size={18} className="text-violet-600" />
+            </div>
+            <p className="truncate text-lg font-bold text-gray-900">
+              {dashboardStats.topCompany?.company ?? '아직 없음'}
+            </p>
+            <p className="mt-1 text-xs text-gray-500">
+              {dashboardStats.topCompany ? `${dashboardStats.topCompany.count}장 보유` : '명함을 추가하면 집계됩니다'}
+            </p>
+          </div>
+        </section>
+
+        <section className="mb-6 grid gap-4 lg:grid-cols-2">
+          <div className="rounded-2xl border border-gray-200 bg-white/90 p-5 shadow-sm">
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <h2 className="text-base font-semibold text-gray-900">회사 분포</h2>
+                <p className="text-xs text-gray-500">가장 많이 저장된 회사 순</p>
+              </div>
+              <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700">
+                TOP {dashboardStats.topCompanies.length}
+              </span>
+            </div>
+
+            <div className="space-y-3">
+              {dashboardStats.topCompanies.length > 0 ? dashboardStats.topCompanies.map((group) => {
+                const maxCount = dashboardStats.topCompanies[0]?.count || 1;
+                const width = Math.max(18, Math.round((group.count / maxCount) * 100));
+
+                return (
+                  <div key={group.company}>
+                    <div className="mb-1 flex items-center justify-between gap-3 text-sm">
+                      <span className="truncate font-medium text-gray-700">{group.company}</span>
+                      <span className="text-xs text-gray-500">{group.count}장</span>
+                    </div>
+                    <div className="h-2 rounded-full bg-gray-100">
+                      <div
+                        className="h-2 rounded-full bg-gradient-to-r from-blue-500 to-cyan-400"
+                        style={{ width: `${width}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              }) : (
+                <p className="rounded-xl bg-gray-50 px-4 py-6 text-sm text-gray-500">
+                  아직 집계할 회사 데이터가 없습니다.
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-gray-200 bg-white/90 p-5 shadow-sm">
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <h2 className="text-base font-semibold text-gray-900">관계 구분 분포</h2>
+                <p className="text-xs text-gray-500">자주 쓰는 관계 태그 순</p>
+              </div>
+              <span className="rounded-full bg-violet-50 px-2.5 py-1 text-xs font-medium text-violet-700">
+                TOP {dashboardStats.topCategories.length}
+              </span>
+            </div>
+
+            <div className="space-y-3">
+              {dashboardStats.topCategories.length > 0 ? dashboardStats.topCategories.map((category) => {
+                const maxCount = dashboardStats.topCategories[0]?.count || 1;
+                const width = Math.max(18, Math.round((category.count / maxCount) * 100));
+
+                return (
+                  <div key={category.name}>
+                    <div className="mb-1 flex items-center justify-between gap-3 text-sm">
+                      <span className="truncate font-medium text-gray-700">{category.name}</span>
+                      <span className="text-xs text-gray-500">{category.count}건</span>
+                    </div>
+                    <div className="h-2 rounded-full bg-gray-100">
+                      <div
+                        className="h-2 rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-400"
+                        style={{ width: `${width}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              }) : (
+                <p className="rounded-xl bg-gray-50 px-4 py-6 text-sm text-gray-500">
+                  아직 선택된 관계 구분 데이터가 없습니다.
+                </p>
+              )}
+            </div>
+          </div>
+        </section>
+
         {/* 검색창 */}
         <div className="mb-4">
           <div className="relative">
@@ -326,6 +542,15 @@ export default function HomePage() {
               초기화
             </button>
           )}
+        </div>
+
+        <div className="mb-5 flex items-center justify-between rounded-2xl border border-gray-200 bg-white/80 px-4 py-3 text-sm text-gray-600 shadow-sm">
+          <p>
+            현재 <span className="font-semibold text-gray-900">{filteredCards.length}개</span>를 보고 있습니다.
+          </p>
+          <p className="text-xs text-gray-500">
+            전체 {cards.length}개 / {pagination.totalPages}페이지
+          </p>
         </div>
 
         {/* 명함 그리드 */}

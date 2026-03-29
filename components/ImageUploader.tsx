@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { useState, useRef } from 'react';
 import { Upload, X, Camera, ImageIcon, Crop, RotateCcw, Loader2 } from 'lucide-react';
 import { compressImage } from '@/lib/utils';
@@ -140,7 +141,14 @@ export default function ImageUploader({ onImageSelect, currentImage }: ImageUplo
             {/* 크롭 결과 */}
             <div className="space-y-2">
               <div className="relative w-full aspect-[9/5] rounded-lg overflow-hidden border-2 border-blue-400 bg-gray-100">
-                <img src={croppedImage} alt="크롭된 명함" className="w-full h-full object-contain" />
+                <Image
+                  src={croppedImage}
+                  alt="크롭된 명함"
+                  fill
+                  unoptimized
+                  sizes="(max-width: 768px) 50vw, 240px"
+                  className="object-contain"
+                />
                 {cropDetected && (
                   <div className="absolute top-1 left-1 bg-blue-500 text-white text-xs px-1.5 py-0.5 rounded-full flex items-center gap-1">
                     <Crop size={10} />
@@ -160,7 +168,14 @@ export default function ImageUploader({ onImageSelect, currentImage }: ImageUplo
             {/* 원본 */}
             <div className="space-y-2">
               <div className="relative w-full aspect-[9/5] rounded-lg overflow-hidden border-2 border-gray-300 bg-gray-100">
-                <img src={originalImage} alt="원본 사진" className="w-full h-full object-contain" />
+                <Image
+                  src={originalImage}
+                  alt="원본 사진"
+                  fill
+                  unoptimized
+                  sizes="(max-width: 768px) 50vw, 240px"
+                  className="object-contain"
+                />
                 <div className="absolute top-1 left-1 bg-gray-600 text-white text-xs px-1.5 py-0.5 rounded-full">
                   원본
                 </div>
@@ -187,7 +202,14 @@ export default function ImageUploader({ onImageSelect, currentImage }: ImageUplo
       {/* ── 상태: 선택 완료 ── */}
       {state === 'done' && (
         <div className="relative w-full aspect-[16/10] rounded-lg overflow-hidden border-2 border-gray-200">
-          <img src={preview} alt="명함 미리보기" className="w-full h-full object-contain bg-gray-50" />
+          <Image
+            src={preview}
+            alt="명함 미리보기"
+            fill
+            unoptimized
+            sizes="(max-width: 1024px) 100vw, 768px"
+            className="object-contain bg-gray-50"
+          />
           <button
             onClick={handleRemove}
             className="absolute top-2 right-2 p-2 bg-red-500 text-white rounded-full

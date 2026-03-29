@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { Building2, User, Phone, Mail, Star } from 'lucide-react';
 import type { BusinessCard } from '@/types/business-card';
 import { formatPhoneNumber } from '@/lib/utils';
@@ -20,10 +21,13 @@ export default function BusinessCardItem({ card, onClick }: BusinessCardItemProp
       {/* 명함 이미지 */}
       <div className="relative w-full aspect-[16/10] bg-gradient-to-br from-gray-100 to-gray-200">
         {card.imageFront ? (
-          <img
+          <Image
             src={card.imageFront}
             alt={`${card.name} 명함`}
-            className="w-full h-full object-cover"
+            fill
+            unoptimized
+            sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+            className="object-cover"
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
