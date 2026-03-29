@@ -8,6 +8,7 @@ import type {
 } from '@/types/business-card';
 import { DEFAULT_CATEGORIES, CATEGORIES_STORAGE_KEY } from '@/types/business-card';
 import { generateId } from './utils';
+import { getCurrentUser, getSupabaseClient } from './supabase';
 
 /**
  * IndexedDB 스토어 초기화
@@ -116,11 +117,91 @@ function makeDuplicateSignature(input: CreateBusinessCardInput): string {
     .join('|');
 }
 
+interface CloudCardRow {
+  id: string;
+  user_id: string;
+  name: string;
+  company: string;
+  title: string;
+  phone: string;
+  email: string;
+  memo: string;
+  image_front: string | null;
+  raw_ocr_text: string | null;
+  favorite: boolean;
+  categories: string[] | null;
+  created_at: string;
+  updated_at: string;
+}
+
+function toCloudCardRow(card: BusinessCard, userId: string): CloudCardRow {
+  return {
+    id: card.id,
+    user_id: userId,
+    name: card.name,
+    company: card.company,
+    title: card.title,
+    phone: card.phone,
+    email: card.email,
+    memo: card.memo,
+    image_front: card.imageFront ?? null,
+    raw_ocr_text: card.rawOcrText ?? null,
+    favorite: card.favorite,
+    categories: card.categories ?? [],
+    created_at: card.createdAt,
+    updated_at: card.updatedAt,
+  };
+}
+
+function fromCloudCardRow(row: CloudCardRow): BusinessCard {
+  return {
+    id: row.id,
+    name: row.name || '',
+    company: row.company || '',
+    title: row.title || '',
+    phone: row.phone || '',
+    email: row.email || '',
+    memo: row.memo || '',
+    imageFront: row.image_front || undefined,
+    rawOcrText: row.raw_ocr_text || undefined,
+    favorite: Boolean(row.favorite),
+    categories: row.categories || [],
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+async function getCloudContext(): Promise<{ userId: string; supabase: NonNullable<ReturnType<typeof getSupabaseClient>> } | null> {
+  const supabase = getSupabaseClient();
+  if (!supabase) return null;
+
+  const user = await getCurrentUser();
+  if (!user) return null;
+
+  return { userId: user.id, supabase };
+}
+
 /**
  * 전체 명함 목록 불러오기
  */
 export async function getAllCards(): Promise<BusinessCard[]> {
   try {
+    const cloud = await getCloudContext();
+    if (cloud) {
+      const { data, error } = await cloud.supabase
+        .from('business_cards')
+        .select('*')
+        .eq('user_id', cloud.userId)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Failed to load cloud cards:', error);
+        return [];
+      }
+
+      return (data as CloudCardRow[]).map(fromCloudCardRow);
+    }
+
     const cards = await cardStore.getItem<BusinessCard[]>(STORAGE_KEY);
     return cards || [];
   } catch (error) {
@@ -147,8 +228,6 @@ export async function getCardById(id: string): Promise<BusinessCard | null> {
  */
 export async function createCard(input: CreateBusinessCardInput): Promise<BusinessCard> {
   try {
-    const cards = await getAllCards();
-    
     const newCard: BusinessCard = {
       id: generateId(),
       ...input,
@@ -156,7 +235,16 @@ export async function createCard(input: CreateBusinessCardInput): Promise<Busine
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-    
+
+    const cloud = await getCloudContext();
+    if (cloud) {
+      const row = toCloudCardRow(newCard, cloud.userId);
+      const { error } = await cloud.supabase.from('business_cards').insert(row);
+      if (error) throw error;
+      return newCard;
+    }
+
+    const cards = await getAllCards();
     cards.push(newCard);
     await cardStore.setItem(STORAGE_KEY, cards);
     
@@ -172,6 +260,30 @@ export async function createCard(input: CreateBusinessCardInput): Promise<Busine
  */
 export async function updateCard(input: UpdateBusinessCardInput): Promise<BusinessCard> {
   try {
+    const cloud = await getCloudContext();
+    if (cloud) {
+      const existing = await getCardById(input.id);
+      if (!existing) {
+        throw new Error('명함을 찾을 수 없습니다.');
+      }
+
+      const updatedCard: BusinessCard = {
+        ...existing,
+        ...input,
+        updatedAt: new Date().toISOString(),
+      };
+
+      const row = toCloudCardRow(updatedCard, cloud.userId);
+      const { error } = await cloud.supabase
+        .from('business_cards')
+        .update(row)
+        .eq('id', input.id)
+        .eq('user_id', cloud.userId);
+
+      if (error) throw error;
+      return updatedCard;
+    }
+
     const cards = await getAllCards();
     const index = cards.findIndex(card => card.id === input.id);
     
@@ -200,6 +312,18 @@ export async function updateCard(input: UpdateBusinessCardInput): Promise<Busine
  */
 export async function deleteCard(id: string): Promise<void> {
   try {
+    const cloud = await getCloudContext();
+    if (cloud) {
+      const { error } = await cloud.supabase
+        .from('business_cards')
+        .delete()
+        .eq('id', id)
+        .eq('user_id', cloud.userId);
+
+      if (error) throw error;
+      return;
+    }
+
     const cards = await getAllCards();
     const filtered = cards.filter(card => card.id !== id);
     
@@ -334,6 +458,26 @@ export async function importFromJson(jsonString: string): Promise<number> {
     }
     
     const mergedCards = [...existingCards, ...newCards];
+
+    const cloud = await getCloudContext();
+    if (cloud) {
+      const rows = newCards.map((card) =>
+        toCloudCardRow(
+          {
+            ...card,
+            favorite: Boolean(card.favorite),
+            categories: card.categories || [],
+            createdAt: card.createdAt || new Date().toISOString(),
+            updatedAt: card.updatedAt || new Date().toISOString(),
+          },
+          cloud.userId
+        )
+      );
+      const { error } = await cloud.supabase.from('business_cards').insert(rows);
+      if (error) throw error;
+      return newCards.length;
+    }
+
     await cardStore.setItem(STORAGE_KEY, mergedCards);
     
     return newCards.length;
@@ -421,6 +565,14 @@ export async function importFromSpreadsheet(file: File): Promise<number> {
       addCategoryItem(category);
     }
 
+    const cloud = await getCloudContext();
+    if (cloud) {
+      const rows = newCards.map((card) => toCloudCardRow(card, cloud.userId));
+      const { error } = await cloud.supabase.from('business_cards').insert(rows);
+      if (error) throw error;
+      return newCards.length;
+    }
+
     await cardStore.setItem(STORAGE_KEY, [...existingCards, ...newCards]);
     return newCards.length;
   } catch (error) {
@@ -434,6 +586,17 @@ export async function importFromSpreadsheet(file: File): Promise<number> {
  */
 export async function clearAllCards(): Promise<void> {
   try {
+    const cloud = await getCloudContext();
+    if (cloud) {
+      const { error } = await cloud.supabase
+        .from('business_cards')
+        .delete()
+        .eq('user_id', cloud.userId);
+
+      if (error) throw error;
+      return;
+    }
+
     await cardStore.setItem(STORAGE_KEY, []);
   } catch (error) {
     console.error('Failed to clear cards:', error);

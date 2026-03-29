@@ -21,6 +21,13 @@ import BusinessCardDetailModal from '@/components/BusinessCardDetailModal';
 import CompanyFilter from '@/components/CompanyFilter';
 import PaginationControls from '@/components/PaginationControls';
 import InstallAppButton from '@/components/InstallAppButton';  // PWA 설치 버튼
+import {
+  getCurrentUser,
+  isSupabaseConfigured,
+  signInWithGoogle,
+  signOutSupabase,
+  subscribeAuthChange,
+} from '@/lib/supabase';
 
 const APP_VERSION = 'v1.0.0';
 const LAST_UPDATED_AT = '2026.03.29 21:20';
@@ -35,6 +42,8 @@ export default function HomePage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [authEmail, setAuthEmail] = useState<string | null>(null);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
   type SortOrder = 'newest' | 'oldest' | 'name' | 'company' | 'fav-first';
   const [sortOrder, setSortOrder] = useState<SortOrder>('newest');
 
@@ -76,6 +85,46 @@ export default function HomePage() {
   useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    const loadAuth = async () => {
+      setIsAuthLoading(true);
+      const user = await getCurrentUser();
+      setAuthEmail(user?.email ?? null);
+      setIsAuthLoading(false);
+    };
+
+    void loadAuth();
+
+    const unsubscribe = subscribeAuthChange(() => {
+      void loadAuth();
+      void loadData();
+    });
+
+    return unsubscribe;
+  }, []);
+
+  const handleGoogleLogin = async () => {
+    try {
+      if (!isSupabaseConfigured()) {
+        alert('Supabase 설정이 필요합니다. NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY를 설정해주세요.');
+        return;
+      }
+      await signInWithGoogle(window.location.origin);
+    } catch {
+      alert('구글 로그인에 실패했습니다.');
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await signOutSupabase();
+      setAuthEmail(null);
+      await loadData();
+    } catch {
+      alert('로그아웃에 실패했습니다.');
+    }
+  };
 
   const dashboardStats = useMemo(() => {
     const sortedCompanies = [...companyGroups].sort((a, b) => {
@@ -335,6 +384,27 @@ export default function HomePage() {
             
             <div className="flex items-center gap-2">
               <InstallAppButton />
+              {isSupabaseConfigured() && (
+                authEmail ? (
+                  <div className="hidden md:flex items-center gap-2">
+                    <span className="text-xs text-gray-500 truncate max-w-[180px]">{authEmail}</span>
+                    <button
+                      onClick={handleLogout}
+                      className="px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 transition-colors"
+                    >
+                      로그아웃
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={handleGoogleLogin}
+                    disabled={isAuthLoading}
+                    className="px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 disabled:opacity-60 transition-colors"
+                  >
+                    구글 로그인
+                  </button>
+                )
+              )}
               <button
                 onClick={handleRememberImport}
                 className="px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors"
